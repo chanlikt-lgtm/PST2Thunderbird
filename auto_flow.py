@@ -86,6 +86,30 @@ MONTHS = {
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+MIN_RATIO = 0.05   # output must be >= 5% of PST size; below this = suspect
+
+
+def verify_size(pst_path: Path, sbd_dir: Path):
+    """Warn if output mbox total is suspiciously small vs PST input."""
+    try:
+        pst_bytes = pst_path.stat().st_size
+        out_bytes = sum(f.stat().st_size for f in sbd_dir.rglob("*")
+                        if f.is_file() and f.suffix not in (".msf", ".lock"))
+        if pst_bytes == 0:
+            return
+        ratio = out_bytes / pst_bytes
+        pst_mb  = pst_bytes  // (1024 * 1024)
+        out_mb  = out_bytes  // (1024 * 1024)
+        if ratio < MIN_RATIO:
+            log.warning(f"SIZE WARNING: PST={pst_mb} MB  output={out_mb} MB  "
+                        f"({ratio*100:.1f}%) — likely incomplete conversion!")
+        else:
+            log.info(f"Size OK: PST={pst_mb} MB  output={out_mb} MB  "
+                     f"({ratio*100:.0f}%)")
+    except Exception as e:
+        log.warning(f"Size check failed: {e}")
+
+
 def sanitize(name):
     for c in r'<>:"/\|?*':
         name = name.replace(c, "_")
@@ -324,6 +348,7 @@ def convert_pst(pst_path: Path, dry_run: bool) -> int:
         return 0
 
     log.info(f"  Total: {total} messages → {sbd_dir}")
+    verify_size(pst_path, sbd_dir)
     return total
 
 
