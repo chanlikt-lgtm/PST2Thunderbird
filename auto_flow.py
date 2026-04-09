@@ -30,6 +30,8 @@ import email.mime.base
 import re
 import logging
 from email import encoders
+import email.utils
+import time as _time
 from datetime import datetime
 from pathlib import Path
 from libratom.lib.pff import PffArchive
@@ -269,7 +271,17 @@ def write_messages(messages, mbox_path: Path) -> int:
             for message in messages:
                 try:
                     msg = build_mime_message(message)
-                    mbox.add(msg)
+                    mbox_msg = mailbox.mboxMessage(msg)
+                    date_str = msg.get("Date", "")
+                    if date_str:
+                        try:
+                            t = email.utils.parsedate_tz(date_str)
+                            if t:
+                                ts = email.utils.mktime_tz(t)
+                                mbox_msg.set_from("MAILER-DAEMON", _time.gmtime(ts))
+                        except Exception:
+                            pass
+                    mbox.add(mbox_msg)
                     count += 1
                 except Exception:
                     pass
