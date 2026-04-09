@@ -131,21 +131,50 @@ def main():
         print("Re-run without --dry-run to apply.")
         return
 
-    # Apply renames
+    # Apply renames — atomic per folder: all 3 files must succeed or roll back
     errors = 0
+    renamed = 0
     for old_name, new_name in renames:
-        for suffix in ('', '.sbd', '.msf'):
+        suffixes_present = [s for s in ('', '.sbd', '.msf')
+                            if (OUT_BASE / (old_name + s)).exists()]
+
+        # Check all targets are free before touching anything
+        blocked = [(OUT_BASE / (new_name + s)) for s in suffixes_present
+                   if (OUT_BASE / (new_name + s)).exists()]
+        if blocked:
+            print(f"  SKIP (target exists): {new_name}")
+            errors += 1
+            continue
+
+        # Attempt all renames; roll back on any failure
+        done = []
+        failed = False
+        for suffix in suffixes_present:
             old_path = OUT_BASE / (old_name + suffix)
             new_path = OUT_BASE / (new_name + suffix)
-            if old_path.exists():
-                try:
-                    old_path.rename(new_path)
-                except Exception as e:
-                    print(f"  ERROR renaming {old_path.name}: {e}")
-                    errors += 1
+            try:
+                old_path.rename(new_path)
+                done.append((new_path, old_path))
+            except Exception as e:
+                print(f"  ERROR renaming {old_path.name}: {e}")
+                # Roll back what we already renamed for this folder
+                for new_p, old_p in done:
+                    try:
+                        new_p.rename(old_p)
+                    except Exception:
+                        pass
+                failed = True
+                errors += 1
+                break
 
-    print(f"Done. {len(renames)} folders renamed, {errors} error(s).")
-    print("Restart Thunderbird to see sorted folders.")
+        if not failed:
+            renamed += 1
+
+    print(f"Done. {renamed} folders renamed, {errors} error(s).")
+    if errors:
+        print("Tip: close Thunderbird and re-run to retry failed renames.")
+    else:
+        print("Restart Thunderbird to see sorted folders.")
 
 
 if __name__ == '__main__':
