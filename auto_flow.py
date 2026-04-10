@@ -37,12 +37,18 @@ from pathlib import Path
 from libratom.lib.pff import PffArchive
 
 # ── Config ────────────────────────────────────────────────────────────────────
-INCOMING  = Path(r"E:\PST\Incoming")
-DONE_DIR  = Path(r"E:\PST\Incoming\Done")
-PST_DIR   = Path(r"E:\PST")
-OUT_BASE  = Path(r"E:\TB_Mail_v2")
-LOG_FILE  = Path(r"E:\claude\Pst2Thunder\auto_flow.log")
+INCOMING   = Path(r"E:\PST\Incoming")
+DONE_DIR   = Path(r"E:\PST\Incoming\Done")
+PST_DIR    = Path(r"E:\PST")
+OUT_BASE   = Path(r"E:\TB_Mail_v2")
+LOG_FILE   = Path(r"E:\claude\Pst2Thunder\auto_flow.log")
 SCRIPT_DIR = Path(r"E:\claude\Pst2Thunder")
+
+# Extra watch folders — scan recursively for completed PST downloads
+# Skip any file that has a sibling *.baiduyun.p.downloading (still in progress)
+EXTRA_WATCH = [
+    Path(r"E:\BaiduNetdiskDownload"),
+]
 
 # Force UTF-8 stdout
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
@@ -389,12 +395,56 @@ def sort_new_folder(stem: str, dry_run: bool):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+def scan_extra_watches(dry_run: bool):
+    """
+    Scan EXTRA_WATCH folders recursively for fully-downloaded PST files.
+    A PST is considered still downloading if a sibling file ending in
+    '.baiduyun.p.downloading' or '.downloading' exists for that stem.
+    Completed PSTs are copied to INCOMING for normal processing.
+    """
+    INCOMING.mkdir(parents=True, exist_ok=True)
+    found = 0
+    for watch_dir in EXTRA_WATCH:
+        if not watch_dir.exists():
+            continue
+        log.info(f"Scanning extra watch: {watch_dir}")
+        for pst in watch_dir.rglob("*.pst"):
+            if not pst.is_file():
+                continue
+            # Skip if a .downloading sibling exists (Baidu partial download)
+            partial = list(pst.parent.glob(pst.name + ".*downloading*")) + \
+                      list(pst.parent.glob(pst.stem + "*.downloading*"))
+            if partial:
+                log.info(f"  SKIP (still downloading): {pst.name}")
+                continue
+            # Skip if already in INCOMING or PST_DIR
+            dest = INCOMING / pst.name
+            if dest.exists():
+                log.info(f"  SKIP (already in Incoming): {pst.name}")
+                continue
+            if any(e.name == pst.name for e in PST_DIR.rglob("*.pst")):
+                log.info(f"  SKIP (already in PST_DIR): {pst.name}")
+                continue
+            log.info(f"  NEW PST found: {pst}  ({pst.stat().st_size // 1024 // 1024} MB)")
+            if not dry_run:
+                shutil.copy2(str(pst), str(dest))
+                log.info(f"  Copied → {dest}")
+            found += 1
+    if found:
+        log.info(f"Extra watch: {found} new PST(s) staged to Incoming")
+    else:
+        log.info("Extra watch: no new PSTs found")
+
+
 def main():
     dry_run = "--dry-run" in sys.argv
 
     log.info("=" * 60)
     log.info(f"auto_flow started  {'[DRY-RUN]' if dry_run else ''}")
     log.info(f"Watching: {INCOMING}")
+
+    # Stage any completed downloads from extra watch folders (e.g. BaiduNetdisk)
+    scan_extra_watches(dry_run)
 
     # Find PSTs in Incoming (exclude Done subfolder)
     incoming_psts = [

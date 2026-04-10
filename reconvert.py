@@ -129,6 +129,20 @@ def build_mime_message(message) -> email.message.Message:
     else:
         msg = body_part
 
+    # ── Fallback date from PST timestamp properties ──────────────────────────
+    if "Date" not in header_data:
+        for attr in ("delivery_time", "client_submit_time", "creation_time"):
+            try:
+                dt = getattr(message, attr, None)
+                if dt:
+                    import datetime
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=datetime.timezone.utc)
+                    header_data["Date"] = email.utils.format_datetime(dt)
+                    break
+            except Exception:
+                pass
+
     # ── Copy headers ─────────────────────────────────────────────────────────
     for key, val in header_data.items():
         if key not in msg:
