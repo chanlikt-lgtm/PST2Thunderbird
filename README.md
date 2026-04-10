@@ -144,6 +144,6 @@ py -3.11 sort_folders.py
 
 ## Known Issues
 
-- `INFINEON Sep 2007.pst` — corrupted, no recoverable data
+- ` Sep 2007.pst` — corrupted, no recoverable data
 - `mailbox.pst` — corrupted (`libpff` name-to-id map error)
 - `Feb 2020.pst`, `Dec 2023.pst` — 0-byte files, empty output
