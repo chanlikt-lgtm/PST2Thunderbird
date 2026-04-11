@@ -142,7 +142,7 @@ def main():
     succeeded = 0
     failed    = 0
     for name in pending:
-        print(f"── {name}.pst")
+        print(f"-- {name}.pst")
         result = subprocess.run(
             ["py", "-3.11", str(RECONVERT), name],
             cwd=str(RECONVERT.parent),

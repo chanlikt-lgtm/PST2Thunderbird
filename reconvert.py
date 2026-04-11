@@ -41,7 +41,7 @@ from libratom.lib.pff import PffArchive
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 PST_DIR    = Path(r"E:\PST")
-OUT_BASE   = Path(r"E:\TB_Mail_v2")
+OUT_BASE   = Path(r"E:\TB_Mail_v3")
 FAILED_LOG = Path(r"E:\claude\Pst2Thunder\failed_psts.log")
 _OLE_MAGIC = b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'
 
@@ -791,6 +791,33 @@ def build_mime_message(message) -> email.message.Message:
             except Exception:
                 pass
 
+    # ── Fallback From/To from PST sender/recipient properties ─────────────────
+    if "From" not in header_data:
+        try:
+            name  = getattr(message, "sender_name", None) or ""
+            email_addr = getattr(message, "sender_email_address", None) or ""
+            if email_addr:
+                header_data["From"] = email.utils.formataddr((name, email_addr))
+            elif name:
+                header_data["From"] = name
+        except Exception:
+            pass
+
+    if "To" not in header_data:
+        try:
+            recips = []
+            for r in (message.recipients or []):
+                rname  = getattr(r, "display_name", "") or ""
+                raddr  = getattr(r, "email_address", "") or ""
+                if raddr:
+                    recips.append(email.utils.formataddr((rname, raddr)))
+                elif rname:
+                    recips.append(rname)
+            if recips:
+                header_data["To"] = ", ".join(recips)
+        except Exception:
+            pass
+
     # ── Copy headers ──────────────────────────────────────────────────────────
     for key, val in header_data.items():
         if key not in msg:
@@ -886,7 +913,7 @@ def reconvert(pst_path: Path):
         with PffArchive(str(pst_path)) as archive:
             # Detect broken or ANSI root → fallback
             try:
-                root = archive.archive.get_root_folder()
+                root = archive._data.get_root_folder()
                 is_bad_root = (root is None or not hasattr(root, "sub_folders"))
             except Exception:
                 is_bad_root = True
